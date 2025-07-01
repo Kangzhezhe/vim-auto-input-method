@@ -131,6 +131,67 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+     // 添加光标样式映射
+    const cursorStyleMap: Record<string, vscode.TextEditorCursorStyle> = {
+        'line': vscode.TextEditorCursorStyle.Line,
+        'block': vscode.TextEditorCursorStyle.Block,
+        'underline': vscode.TextEditorCursorStyle.Underline,
+        'line-thin': vscode.TextEditorCursorStyle.LineThin,
+        'block-outline': vscode.TextEditorCursorStyle.BlockOutline,
+        'underline-thin': vscode.TextEditorCursorStyle.UnderlineThin,
+    };
+
+    // 记录上一个光标样式
+    let lastCursorStyle: vscode.TextEditorCursorStyle | null = null;
+
+
+    // 获取Vim配置中的光标样式
+    function getVimCursorStyles() {
+    const vimConfig = vscode.workspace.getConfiguration('vim');
+    const cursorStyleForNormal = vimConfig.get<string>('cursorStylePerMode.normal');
+    const cursorStyleForInsert = vimConfig.get<string>('cursorStylePerMode.insert');
+    
+    return {
+        normal: cursorStyleForNormal && cursorStyleMap[cursorStyleForNormal] 
+            ? cursorStyleMap[cursorStyleForNormal] 
+            : vscode.TextEditorCursorStyle.Block,
+        insert: cursorStyleForInsert && cursorStyleMap[cursorStyleForInsert] 
+            ? cursorStyleMap[cursorStyleForInsert] 
+            : vscode.TextEditorCursorStyle.Line
+    };
+}
+
+    // 检查是否为Normal模式（方块光标）
+    function isVimNormalMode(cursorStyle: vscode.TextEditorCursorStyle): boolean {
+        const vimCursorStyles = getVimCursorStyles();
+        return cursorStyle === vimCursorStyles.normal;
+    }
+
+    // 监听编辑器选项变化（包括光标样式）
+    const editorOptionsWatcher = vscode.window.onDidChangeTextEditorOptions((event) => {
+        const config = getVimInputMethodConfig();
+        if (!config.enable) {
+            return;
+        }
+
+        const cursorStyle = event.options.cursorStyle;
+        
+        // 如果光标样式发生变化
+        if (cursorStyle && cursorStyle !== lastCursorStyle) {
+            outputChannel.appendLine(`Cursor style changed: ${cursorStyle}`);
+            
+            // 检查是否为Normal模式（方块光标）
+            if (isVimNormalMode(cursorStyle)) {
+                outputChannel.appendLine('Detected Normal mode (block cursor), switching input method');
+                switchInputMethod();
+            } else {
+                outputChannel.appendLine('Detected Insert mode or other mode, not switching input method');
+            }
+            
+            lastCursorStyle = cursorStyle;
+        }
+    });
+
     // 监听活动编辑器变化（当焦点在文本编辑窗口时）
     const editorChangeWatcher = vscode.window.onDidChangeActiveTextEditor(editor => {
         const config = getVimInputMethodConfig();
@@ -140,11 +201,20 @@ export function activate(context: vscode.ExtensionContext) {
         outputChannel.appendLine(`Active text editor changed: ${editor ? 'Editor present' : 'No editor'}`);
 
         if (editor && editor.document) {
-            outputChannel.appendLine('Text editor focused, switching input method');
+            outputChannel.appendLine('Text editor focused, checking vim mode via cursor style');
             outputChannel.appendLine(`Editor file type: ${editor.document.languageId}`);
             outputChannel.appendLine(`Editor file path: ${editor.document.fileName}`);
             
-            switchInputMethod();
+            // 延迟一点时间确保光标样式已更新
+            setTimeout(() => {
+                const cursorStyle = editor.options.cursorStyle;
+                if (cursorStyle && isVimNormalMode(cursorStyle)) {
+                    outputChannel.appendLine('Editor focused with Normal mode cursor, switching input method');
+                    switchInputMethod();
+                } else {
+                    outputChannel.appendLine('Editor focused but not in Normal mode, skipping input method switch');
+                }
+            }, 100);
         }
     });
 
