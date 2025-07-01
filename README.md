@@ -18,7 +18,7 @@
 
 或者从 VSIX 文件安装：
 ```bash
-code --install-extension vim-auto-input-method-0.0.1.vsix
+code --install-extension vim-auto-input-method.vsix
 ```
 
 ## 配置
